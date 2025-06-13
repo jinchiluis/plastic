@@ -1,0 +1,127 @@
+import os
+import numpy as np
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from tensorflow.keras.models import Model
+from sklearn.ensemble import IsolationForest
+import joblib
+from PIL import Image
+
+class ModelTrainer:
+    def __init__(self):
+        # Initialize MobileNetV2 as feature extractor
+        base_model = MobileNetV2(weights='imagenet', include_top=False, pooling='avg')
+        self.feature_extractor = Model(inputs=base_model.input, outputs=base_model.output)
+        self.isolation_forest = None
+        
+    def extract_features(self, img_path):
+        """Extract features from a single image using MobileNetV2"""
+        img = Image.open(img_path).convert('RGB')
+        img = img.resize((224, 224))
+        img_array = image.img_to_array(img)
+        img_array = np.expand_dims(img_array, axis=0)
+        img_array = preprocess_input(img_array)
+        features = self.feature_extractor.predict(img_array)
+        return features.flatten()
+    
+    def extract_features_from_folder(self, folder_path):
+        """Extract features from all images in a folder"""
+        features_list = []
+        image_files = []
+        
+        # Get all image files
+        valid_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff')
+        for filename in os.listdir(folder_path):
+            if filename.lower().endswith(valid_extensions):
+                image_files.append(filename)
+                
+        print(f"Found {len(image_files)} images in {folder_path}")
+        
+        # Extract features from each image
+        for i, filename in enumerate(image_files):
+            try:
+                img_path = os.path.join(folder_path, filename)
+                features = self.extract_features(img_path)
+                features_list.append(features)
+                
+                if (i + 1) % 10 == 0:
+                    print(f"Processed {i + 1}/{len(image_files)} images")
+                    
+            except Exception as e:
+                print(f"Error processing {filename}: {str(e)}")
+                
+        return np.array(features_list)
+    
+    def train_autoencoder(self, good_images):
+        """Train Isolation Forest on features extracted from good images"""
+        print("Extracting features from good images...")
+        
+        # If good_images is a folder path
+        if isinstance(good_images, str) and os.path.isdir(good_images):
+            features = self.extract_features_from_folder(good_images)
+        # If good_images is already a list of image paths
+        elif isinstance(good_images, list):
+            features_list = []
+            for img_path in good_images:
+                try:
+                    features = self.extract_features(img_path)
+                    features_list.append(features)
+                except Exception as e:
+                    print(f"Error processing {img_path}: {str(e)}")
+            features = np.array(features_list)
+        else:
+            raise ValueError("good_images must be a folder path or list of image paths")
+        
+        print(f"Extracted features shape: {features.shape}")
+        
+        # Train Isolation Forest
+        print("Training Isolation Forest...")
+        self.isolation_forest = IsolationForest(
+            contamination=0.1,  # Assume 10% of data might be outliers
+            random_state=42,
+            n_estimators=100
+        )
+        self.isolation_forest.fit(features)
+        
+        print("Training completed!")
+        return self.isolation_forest
+
+    def save_model(self, model, path):
+        """Save the trained Isolation Forest model"""
+        # Create models directory if it doesn't exist
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        
+        # Save the model using joblib (better for scikit-learn models)
+        if path.endswith('.pkl'):
+            joblib.dump(model, path)
+        else:
+            # If no extension or wrong extension, use .pkl
+            path = path.rsplit('.', 1)[0] + '.pkl'
+            joblib.dump(model, path)
+            
+        print(f"Model saved to: {path}")
+        return path
+    
+    def load_model(self, path):
+        """Load a saved Isolation Forest model"""
+        self.isolation_forest = joblib.load(path)
+        return self.isolation_forest
+    
+    def predict(self, image_path):
+        """Predict if an image is normal (1) or defective (-1)"""
+        if self.isolation_forest is None:
+            raise ValueError("No model loaded. Train or load a model first.")
+            
+        features = self.extract_features(image_path)
+        features = features.reshape(1, -1)
+        prediction = self.isolation_forest.predict(features)
+        
+        # Also get the anomaly score
+        score = self.isolation_forest.score_samples(features)
+        
+        return {
+            'prediction': 'normal' if prediction[0] == 1 else 'defective',
+            'label': prediction[0],
+            'anomaly_score': score[0]
+        }

@@ -1,0 +1,26 @@
+Training:
+
+Phase 0:
+Modelname eingeben: 1234
+check auf namensgleicheit in models und images
+in images wird Training/1234 angelegt
+in models wird 1234.pk angelegt
+
+Phase 1 (loading)
+-> Bilder reinladen über Kamera -> in Training/1234 ablegen
+-> oder direkt über befülltes Verzeichnis Training/1234
+
+Phase 2 (GO)
+-> Model wird erzeugt
+
+-----
+Inference
+Phase 1:
+-> Bilder reinladen über Kamera -> in Inference/1234 abgelegt (VOM ROBOTER gesteuert)
+
+-> Inference/1234 auf neues Bild checken
+-> Bild wird gecheckt model_runner.py
+-> Ergebnis wird angezeigt
+-> Ergebnis wird an Roboter geschickt (MOVE RIGHT/LEFT)
+-> das Bild wird in Inference/1234/processed geschickt
+-> repeat
